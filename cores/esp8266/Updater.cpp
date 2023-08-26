@@ -279,10 +279,24 @@ bool UpdaterClass::end(bool evenIfRemaining){
     // Calculate hash of the payload, 128 bytes at a time
     alignas(alignof(uint32_t)) uint8_t buff[128];
 
+    bool readResult = true;
+    uint8_t ceilToDivisibleBy4Extra = 0;
+
     _hash->begin();
     for (uint32_t offset = 0; offset < binSize; offset += sizeof(buff)) {
       auto len = std::min(sizeof(buff), binSize - offset);
-      ESP.flashRead(_startAddress + offset, reinterpret_cast<uint32_t *>(&buff[0]), len);
+      if (len < sizeof(buff) && len % 4 != 0) {
+        ceilToDivisibleBy4Extra = 4 - len % 4;
+        #ifdef DEBUG_UPDATER
+          DEBUG_UPDATER.printf("[Updater] Length of last chunk is not divisible by 4 (len=%i)! Adding extra %i bytes to ESP.flashRead()!\n", len, ceilToDivisibleBy4Extra);
+        #endif
+      }
+      readResult = ESP.flashRead(_startAddress + offset, reinterpret_cast<uint32_t *>(&buff[0]), len + ceilToDivisibleBy4Extra);
+      #ifdef DEBUG_UPDATER
+        if (!readResult) {
+          DEBUG_UPDATER.printf("[Updater] ESP.flashRead() returned false during hash calculation!\n");
+        }
+      #endif
       _hash->add(buff, len);
     }
     _hash->end();
